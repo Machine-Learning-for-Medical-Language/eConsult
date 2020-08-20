@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+.mainBars{
+  shape-rendering: auto;
+  fill-opacity: 0;
+  stroke-width: 0.5px;
+  stroke: rgb(0, 0, 0);
+  stroke-opacity: 0;
+}
+.subBars{
+	shape-rendering:crispEdges;
+}
+.edges{
+	stroke:none;
+	fill-opacity:0.3;
+}
+.viz-biPartite-subBar{
+	shape-rendering:crispEdges;
+}
+.viz-biPartite-mainBar rect{
+  fill-opacity: 0;
+  stroke-width: 0.5px;
+  stroke: rgb(255, 0, 0);
+  stroke-opacity: 0;
+}
+.viz-biPartite-mainBar .perc{
+  fill:black;
+  text-anchor:right;
+  font-size:12px;
+}
+</style>
+<body>
+        Select month: <input type="month" id="flowMonth" name="startMonthYear" value="2017-12"><div class="result"></div>
+    <svg width="1050" height="700">
+        <g transform="translate(150,50)"></g>
+    </svg>
+    <script> 
+    </script>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script src="http://vizjs.org/viz.v1.3.0.min.js"></script>
+<script>
+    //http://bl.ocks.org/NPashaP/09e7fe0325d2c3bc6257dc4b6719cc09
+    
+// replace to get data from flask:
+var _data=[
+['A','X', 1, 5]
+,['A','Y', 3,4]
+,['B','X', 5,1]
+,['B','Y', 8,10]
+,['C','X', 2,13]
+,['C','Y', 9,7]
+];
+var _data2 = {{ data['data'] | safe }};
+
+var bP = viz.biPartite().width(800).height(600).data(_data2);
+var bPg = d3.select("g").call(bP)
+
+bPg.selectAll(".viz-biPartite-mainBar")
+    .append("text")
+    .attr("class", "perc")
+    .text(function(d){ return d.key });
+
+const selectElement = document.querySelector('#flowMonth');
+
+selectElement.addEventListener('change', (event) => {
+  const result = document.querySelector('.result');
+  const value = event.target.value;
+  var req = new XMLHttpRequest();
+  req.open("POST", "{{ url_for('flows_data') }}");
+  req.onreadystatechange = function(){
+      if(req.readyState == XMLHttpRequest.DONE){
+          data = req.responseText;
+          bP.update();
+      }
+  }
+  var formData = new FormData();
+  formData.append("startMonthYear", value);
+  req.send(formData);
+  
+  result.textContent = `You like ${event.target.value}`;
+});
+    
+    /*
+bPg.selectAll(".viz-biPartite-mainBar")
+    .on("mouseover",mouseover)
+    .on("mouseout",mouseout)
+
+function mouseover(d){
+    bP.mouseover(d)
+
+    bPg.selectAll(".viz-biPartite-mainBar")
+        .select(".perc")
+        .text(function(d){ return d3.format(".0%")(d.percent) })
+}
+
+function mouseout(d){
+    bP.mouseout(d)
+    
+    bPg.selectAll(".viz-biPartite-mainBar")
+        .select(".perc")
+        .text(function(d){ return d3.format(".0%")(d.percent) })
+}
+*/
+//var svg = d3.select("body").append("svg").attr("width", 960).attr("height", 500);
+//var g1 = svg.append("g").attr("transform","translate(50,50)");
+//var bp1=viz.bP()
+//	.data(_data)
+//	.min(10)
+//	.pad(2)
+//	.height(400)
+//	.width(200)
+//	.barSize(35)
+//	.orient("vertical")
+//	.edgeMode("straight")
+    //.fill(d=>color_scale(d.primary));
+	//.fill(d=>color1[d.primary]);
+			
+//g1.call(bp1);
+
+</script>
+</body>
+</html>

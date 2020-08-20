@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style> /* set the CSS */
+    body { font: 12px Arial;}
+.axis--x path {
+  display: none;
+}
+
+.line {
+  fill: none;
+  stroke: steelblue;
+  stroke-width: 1.5px;
+}
+
+     
+  </style>
+</head>
+    
+<body>
+    <div id='graph_select'>
+        <form action={{ url_for('tracker')}} method="post">
+        Start month/year:
+            <input name="startMonthYear" type="month" />
+            
+        End month/year:
+            <input name="endMonthYear" type="month" />
+            <p>
+                <select name='specialty' id='specialty' value="Gastroenterology">
+                    {% for specialty in specialties %}
+                    <option value='{{specialty}}' id='{{specialty}}'>{{specialty}}</option>
+                    {% endfor %}
+                </select>
+                <select name='data_query' id='data_query'>
+                    <option id='cuis' value="cuis">Extracted concepts</option>
+                    <option id='qtype' value="qtype">Question type (classified)</option>
+                    <option id='qcontent' value="qcontent">Question content (classified)</option>
+                    <option id='triage' value="triage">Triage status</option>
+                </select>
+                <input type='number' name='top' value=5 min=1 max=10>
+            </p>
+            
+            <p>
+            <input type='submit' value='Submit'>
+            </p>
+        </form>
+    </div>
+    <p>   
+    <svg width="960" height="500"></svg>
+        
+<script src="static/d3.v4.min.js"></script>
+        
+<script>
+    //https://bl.ocks.org/sebg/0cc55428f83eb52bdfad6f5692023b07
+    var graphData = {{ data.chart_data | safe }}
+    var num_series = graphData.length;
+    // Parse the date / time
+    var parseTime = d3.timeParse("%Y-%m");
+
+    for(i=0; i < num_series; i++){
+        var series = graphData[i];
+        var values = series['values'];
+        for(j=0; j < values.length; j++){
+            // give d3 some info about the types, dates for the date field and numerical for the count field.
+            var parsed_date = parseTime(values[j]['date']);
+            values[j]['date'] = new Date(parsed_date.getFullYear(), parsed_date.getMonth(), 1);
+            values[j]['count'] = +values[j]['count'];
+        }
+    }
+                                          
+    // Set the dimensions of the svg
+    var svg = d3.select('svg');
+    var margin = {top: 20, right: 80, bottom: 30, left: 50};
+    var graphWidth = svg.attr("width") - margin.left - margin.right;
+    var graphHeight = svg.attr("height") - margin.top - margin.bottom;
+    
+    // Adds the svg canvas
+    g = svg.append("g")
+        .attr("transform", 
+        "translate(" + margin.left + "," + margin.top + ")")
+
+    // Set the ranges
+    var x_scale = d3.scaleTime().range([0, graphWidth]);
+    var y_scale = d3.scaleLinear().range([graphHeight, 0]);
+    var z_scale = d3.scaleOrdinal(d3.schemeCategory10);
+
+    // get the number of series:
+    var line = d3.line()
+        .curve(d3.curveBasis)
+        .x(function(d) { return x_scale(d.date); })
+        .y(function(d) { return y_scale(d.count); });
+       
+
+    // define function
+    function draw(data) {
+      
+      // Scale the range of the data
+      //x_scale.domain(d3.extent(data, function(d) { return d.date; }));
+      x_scale.domain([
+          d3.min(data, function(c) { return d3.min(c.values, function(d) { return d.date; }); }),
+          d3.max(data, function(c) { return d3.max(c.values, function(d) { return d.date; }); })
+      ]);
+      y_scale.domain([
+          d3.min(data, function(c) { return d3.min(c.values, function(d) { return d.count; }); }),
+          d3.max(data, function(c) { return d3.max(c.values, function(d) { return d.count; }); })
+      ]);
+      z_scale.domain(data.map(function(c) { return c.id; }));
+      
+      g.append("g")
+        .attr("class", "axis axis--x")
+        .attr("transform", "translate(0," + graphHeight + ")")
+        .call(d3.axisBottom(x_scale));
+      
+      g.append("g")
+        .attr("class", "axis axis--y")
+        .call(d3.axisLeft(y_scale))
+        .append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("y", 6)
+        .attr("dy", "0.71em")
+        .attr("fill", "#000")
+        .text("Counts");
+      
+        
+      var series = g.selectAll(".series")
+        .data(data)
+        .enter().append("g")
+        .attr("class", "series");
+      
+        
+      series.append("path")
+        .attr("class", "line")
+        .attr("d", function(d) { return line(d.values); })
+        .style("stroke", function(d) { return z_scale(d.id); });
+        
+      
+      series.append("text")
+        .datum(function(d) { return {id: d.id, value: d.values[d.values.length-1]}; })
+        .attr("transform", function(d) { return "translate(" + x_scale(d.value.date) + "," + y_scale(d.value.count) + ")"; })
+        .attr("x", num_series)
+        .attr("dy", "0.35em")
+        .style("font", "10px sans-serif")
+        .text(function(d) { return d.id; });      
+    };
+draw(graphData);
+</script>
+        <script>
+    {% if request.method == 'POST' %}
+    console.log("in a post");
+     document.getElementById('{{specialty}}').selected = true;
+     document.getElementById('{{data_req}}').selected = true;
+     {% else %}
+     console.log("Not in a post");
+     {% endif %}
+        </script>
+</body>
+</html>

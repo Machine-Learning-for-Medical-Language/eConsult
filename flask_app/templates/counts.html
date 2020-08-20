@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <style>
+        // our CSS here!
+        body { font: 12px Arial;}
+        path {
+  stroke-width: 2;
+  fill: none;
+}
+.axis path, .axis line {
+  fill: none;
+  stroke: grey;
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+.area {
+  fill: #F0F8FF;
+  stroke-width: 0;
+}
+    </style>
+</head>
+<body>
+    <div id="graphDiv"></div>
+
+    <script src="https://d3js.org/d3.v3.min.js"></script>
+    <script>
+        // Our Custom D3 JavaScript here!
+        var graphData = {{ data.chart_data | safe }}
+
+// Set the dimensions of the svg
+var margin = {top: 30, right: 50, bottom: 50, left: 50};
+var svgWidth = 1200;
+var svgHeight = 540;
+var graphWidth = svgWidth - margin.left - margin.right;
+var graphHeight = svgHeight - margin.top - margin.bottom;
+
+// Parse the date / time
+var parseDate = d3.time.format("%Y-%m").parse;
+
+// Set the ranges
+var x = d3.time.scale().range([0, graphWidth]);
+var y = d3.scale.linear().range([graphHeight, 0]);
+
+// Define the axes
+// var x = d3.scaleBand().domain(data.map(d => d.Date))
+var xAxis = d3.svg.axis().scale(x)
+    //.orient("bottom").ticks(5);
+    
+var yAxis = d3.svg.axis().scale(y)
+    .orient("left").ticks(5);
+
+// Define the High line
+var countLine = d3.svg.line()
+    .x(function(d) { return x(d.Date); })
+    .y(function(d) { return y(d.Count); });
+
+// Adds the svg canvas
+var svg = d3.select("#graphDiv")
+  .append("svg")
+    .attr("width", svgWidth)
+    .attr("height", svgHeight)
+  .append("g")
+    .attr("transform", 
+    "translate(" + margin.left + "," + margin.top + ")")
+
+// define function
+// use + to make sure data is numerical
+function draw(data) {
+  data.forEach(function(d) {
+    d.Date = parseDate(d.Date);
+    d.Count = +d.Count;
+  });
+  // Scale the range of the data
+  x.domain(d3.extent(data, function(d) { return d.Date; }));
+  y.domain(d3.extent(data, function(d) { return d.Count;}));
+  // Add the 2 valueline paths.
+  svg.append("path")
+    .style("stroke", "green")
+    .style("fill", "none")
+    .attr("class", "line")
+    .attr("d", countLine(data));
+  // svg.append("path")
+  //   .style("stroke", "blue")
+  //   .style("fill", "none")
+  //   .style("stroke-dasharray", ("3, 3"))
+  //   .attr("d", closeLine(data));
+  // svg.append("path")
+  //   .style("stroke", "red")
+  //   .attr("d", lowLine(data));
+  // Add the X Axis
+  svg.append("g")
+    .attr("class", "x axis")
+    .attr("transform", "translate(0," + graphHeight + ")")
+      .call(xAxis)
+      .selectAll("text")
+      .attr("y", 20)
+      .attr("x", -30)
+      .attr("dy", ".35em")
+      .attr("transform", "rotate(-45)")
+      .style("text-anchor", "start");
+  // Add the Y Axis
+  svg.append("g")
+    .attr("class", "y axis")
+    .call(yAxis);
+  svg.append("text")
+    .attr("transform", "translate("+(graphWidth+3)+","+y(graphData[0].High)+")")
+    .attr("dy", ".35em")
+    .attr("text-anchor", "start")
+    .style("fill", "green")
+    .text("Count");
+  // svg.append("text")
+  //   .attr("transform", "translate("+(graphWidth+3)+","+y(graphData[0].Low)+")")
+  //   .attr("dy", ".35em")
+  //   .attr("text-anchor", "start")
+  //   .style("fill", "red")
+  //   .text("Low");
+  // svg.append("text")
+  //   .attr("transform", "translate("+(graphWidth+3)+","+y(graphData[0].Close)+")")
+  //   .attr("dy", ".35em")
+  //   .attr("text-anchor", "start")
+  //   .style("fill", "blue")
+  //   .text("Close");
+};
+
+draw(graphData);
+
+
+    </script>
+</body>
+</html>

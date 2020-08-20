@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+       <meta charset="utf-8">
+  
+    </head>
+    
+    <body>
+        <table>
+            <tr><td>
+                <div id="entry">
+                    <form method="post" action="{{url_for('similarity')}}" id="qform" name="qform">
+                        <select name='specialty' id='specialty' value="Gastroenterology">
+                            <option value="All" id='all' default>All</option>
+                            {% for specialty in specialties %}
+                            <option value='{{specialty}}' id='{{specialty}}'>{{specialty}}</option>
+                            {% endfor %}
+                        </select>
+                        <br>
+                        <textarea name="question" rows=4 cols=50 form="qform">
+                            {% if request.method=='POST' %}
+                                {{ request.form.get('question') }}
+                            {% else %}
+                                Enter question here...
+                            {% endif %}
+                        </textarea>
+                        <br>
+                        <input type="submit">
+                    </form>
+                </div>
+                </td></tr>
+            <tr><td>
+                <div id="response">
+                    <table>
+                        <tr><th>Text</th><th>Similarity</th></tr>
+                    {% for response in responses %}
+                    <tr><td>
+                        {{response.text}}
+                        </td>
+                        <td>
+                        {{response.sim}}
+                        </td>
+                        </tr>
+                    {% endfor %}
+                    </table>
+                </div>
+            </td>
+            </tr>
+        </table>
+    </body>
+</html>
