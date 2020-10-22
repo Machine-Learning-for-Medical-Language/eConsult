@@ -1,6 +1,6 @@
 import os
 from os import path
-from os.path import join
+from os.path import join, dirname
 import sys
 import csv
 import logging
@@ -130,17 +130,22 @@ class EconsultYear():
         note_text = ''
         reply_text = ''
         if not self.skipText:
-            if False and self.year == 2008:
+            if self.year == 2008:
                 rownum = row_label.split(".")[0]
                 last2digits = int(rownum) % 100
-                note_fn = join(self.question_dir, '%02d' % (last2digits), '%s.txt' % (row_label))
+                note_fn = join(self.text_dir, '%02d' % (last2digits), '%s.txt' % (row_label))
+            elif self.year > 2009 and self.year < 2013:
+                note_fn = join(self.text_dir, '%s.txt' % (row_label))
             else:
                 note_fn = join(self.question_dir, '%s.txt' % (row_label))
+                
             with open(note_fn, 'r') as note_file:
                 note_text = '\n'.join(note_file.readlines())
 
-            if False and self.year == 2008:
-                reply_fn = join(self.reply_dir, 'replies', '%s-reply.txt' % (row_label))
+            if self.year == 2008:
+                reply_fn = join(self.reply_dir, '%s-reply.txt' % (row_label))
+            elif self.year > 2009 and self.year < 2013:
+                reply_fn = join(self.text_dir, '%s-reply.txt' % (row_label))
             else:
                 reply_fn = join(self.reply_dir, '%s-reply.txt' % (row_label))
                 
