@@ -10,11 +10,21 @@
             <tr><td>
                 <div id="entry">
                     <form method="post" action="{{url_for('cui_similarity')}}" id="qform" name="qform">
-                        <select name='specialty' id='specialty' value="Gastroenterology">
+                        Specialty:
+                        <select name='specialty' id='specialty'>
                             <option value="All" id='all' default>All</option>
                             {% for specialty in specialties %}
                             <option value='{{specialty}}' id='{{specialty}}'>{{specialty}}</option>
                             {% endfor %}
+                        </select>
+                        Ages:
+                        <select name="age" id="age">
+                            <option value="All" id='all' default>All</option>
+                            <option value="Infant" id='Infant'>Infant (&lt; 3)</option>
+                            <option value="Child" id='Child'>Child (4-12)</option>
+                            <option value="Teen" id='Teen'>Teen (13-19)</option>
+                            <option value="Adult" id='Adult'>Adult (20-65)</option>
+                            <option value="Geriatric" id='Geriatric'>Geriatric (&gt; 65)</option>
                         </select>
                         <br>
                         <textarea name="question" rows=4 cols=50 form="qform">
@@ -25,24 +35,29 @@
                             {%- endif -%}
                         </textarea>
                         <br>
+                        <input type="hidden" id="qcui" name="qcui">
                         <input type="submit">
                     </form>
                 </div>
                 </td></tr>
+            {% if request.method=='POST' %}
             <tr><td>
                 <div id="response">
                     All CUIs from the question:
                     <ul>
                         {% for cui in question_cuis.keys() %}
-                        <li>{{ cui }} : {{ question_cuis[cui] }}</li>
+                        <li><a href="#" id="{{cui}}" onclick="document.getElementById('qcui').value = this.id; document.getElementById('qform').submit(); return false;">{{ cui }}</a> : {{ question_cuis[cui] }}</li>
                         {% endfor %}
                     </ul>
                     <table>
-                        <tr><th>Text</th><th>Matching CUIs</th><th>Similarity</th></tr>
+                        <tr><th>Text</th><th>Specialty</th><th>Content classifications</th></t><th>Matching CUIs</th><th>Similarity</th></tr>
                     {% for response in responses %}
+                        {% if response.sim < 1.0 %}
                     <tr><td>
                         {{response.text}}
                         </td>
+                        <td>{{response.specialty}}</td>
+                        <td>{{response.contents}}</td>
                         <td>
                             {{response.cuis}}
                         </td>
@@ -50,11 +65,13 @@
                         {{response.sim}}
                         </td>
                         </tr>
+                    {% endif %}
                     {% endfor %}
                     </table>
                 </div>
             </td>
             </tr>
+            {% endif %}
         </table>
     </body>
 </html>

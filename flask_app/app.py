@@ -1,6 +1,9 @@
 import sys
 import json
 import logging
+import datetime
+from dateutil import parser
+import time
 
 from flask import Flask, render_template, current_app, g, request, jsonify
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -21,7 +24,21 @@ with open('2008-vectors.pkl', 'rb') as vf:
 with open('ohdsi-cui-vectors.pkl', 'rb') as cvf:
     (cui_vecs, cui_vectorizer, note_ids) = pickle.load(cvf)
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
+
+age_ranges = ['Infant', 'Child', 'Teenager', 'Adult', 'Geriatric']
+
+def age_to_range(age):
+    if age < 3:
+        return age_ranges[0]
+    elif age < 13:
+        return age_ranges[1]
+    elif age < 20:
+        return age_ranges[2]
+    elif age < 65:
+        return age_ranges[3]
+    else:
+        return age_ranges[4]
 
 def get_flows_db():
     if 'flows' not in g:
@@ -106,29 +123,84 @@ def cui_similarity():
     if request.method == 'POST':
         logging.info(request.form)
 
+        begin_time = time.time()
+
         question = request.form.get('question')
-        specialty = request.form.get('specialty')
+        specialty_filter = request.form.get('specialty')
+        age_filter = request.form.get('age')
+        cui_filter = request.form.get('qcui')
+        logging.debug("Saw request with cui value %s" % (cui_filter,))
+        
         processed_query = ctakes_rest.process_sentence(question)
         
         for cui, start, end in processed_query:
             question_cuis[cui] = question[start:end]
         
+        end_time = time.time()
+        logging.info("Processing input with ctakes rest required %f s" % (end_time-begin_time))
+
+        begin_time = end_time
+
         cui_text = ' '.join([x[0] for x in processed_query])
         cui_vector = cui_vectorizer.transform([cui_text])
         similarities = cos(cui_vector, cui_vecs)[0]
         ranks = np.argsort(similarities).tolist()
         ranks.reverse()
+        end_time = time.time()
+        logging.info("Vectorizing and computing cos similarity took %f s" % (end_time-begin_time))
         
-        for ind in range(5):
+        for ind in range(100):
             doc_ind = ranks[ind]
             note_id = note_ids[doc_ind]
-            ohdsi.execute('select note_text from NOTE where note_id=?', (note_id,))
-            note_text = ohdsi.fetchone()[0]
+
+            begin_time = time.time()
+            ## This is what's slow:
+            #ohdsi.execute('select note_text, note_type, note_date, person.year_of_birth from NOTE INNER JOIN PERSON on note.person_id=person.person_id where note_id=?', (note_id,))
+            ## This is quite a bit faster but still the bottleneck since it's in the loop. Maybe can fix with some kind of better index?
+            ohdsi.execute('select note_text, note_type, note_date, person_id from NOTE where note_id=?', (note_id,))
+                
+            note_text, specialty, note_date, person_id = ohdsi.fetchone()
+
+            end_time = time.time()
+            logging.debug("Finding note from note_id took %f s" % (end_time-begin_time))
+            begin_time = end_time
+
+            ohdsi.execute('select year_of_birth from PERSON where person_id=?', (person_id,))
+            yob = ohdsi.fetchone()[0]
+
+            # note_year = datetime.datetime.strptime(note_date, '%d/%m/%Y %H:%M').year
+            note_year = parser.parse(note_date).year
+            note_age = note_year - yob
+            age_range = age_to_range(note_age)
+            end_time = time.time()
+            logging.debug("Finding yob from person table took %f s" % (end_time-begin_time))
+            begin_time = end_time
+
+            if specialty != specialty_filter and specialty_filter != 'All':
+                continue
+
+            if age_range != age_filter and age_filter != 'All':
+                continue
             
+            ohdsi.execute('select content_type from question_content where note_id=?', (note_id,))
+            contents = [x[0] for x in ohdsi]
+            end_time = time.time()
+            logging.debug("Selecting content type took %f s" % (end_time-begin_time))
+            begin_time = end_time
+
             ohdsi.execute('select note_nlp_concept from note_nlp where note_id=?', (note_id,))
             cuis = set([x[0] for x in ohdsi])
+            if not cui_filter is None and cui_filter != '' and not cui_filter in cuis:
+                continue
+
             cuis = cuis.intersection(set(question_cuis.keys()))
-            responses.append({'text': note_text, 'cuis':' '.join(cuis), 'sim':similarities[doc_ind]})
+            responses.append({'text': note_text, 'cuis':' '.join(cuis), 'sim':similarities[doc_ind], 'specialty':specialty, 'contents':', '.join(contents)})
+
+            end_time = time.time()
+            logging.debug("Finding concepts in note took %f s" % (end_time - begin_time))
+
+            if len(responses) > 10:
+                break
 
     
     return render_template('cui_sim.html', question_cuis=question_cuis, specialties=specialties, responses=responses)
