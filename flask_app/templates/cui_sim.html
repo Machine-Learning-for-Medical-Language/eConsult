@@ -1,8 +1,58 @@
 <!DOCTYPE html>
 <html lang="en">
     <head>
-       <meta charset="utf-8">
-  
+    <meta charset="utf-8">
+    <style>
+        /* Tooltip container */
+        .tooltip {
+        position: relative;
+        display: inline-block;
+        }
+
+        /* Tooltip text */
+        .tooltip .tooltiptext {
+        visibility: hidden;
+        width: 120px;
+        background-color: #555;
+        color: #fff;
+        text-align: center;
+        padding: 5px 0;
+        border-radius: 6px;
+
+        /* Position the tooltip text */
+        position: absolute;
+        z-index: 1;
+        bottom: 125%;
+        left: 50%;
+        margin-left: -60px;
+
+        /* Fade in tooltip */
+        opacity: 0;
+        transition: opacity 0.3s;
+        }
+
+        /* Tooltip arrow */
+        .tooltip .tooltiptext::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #555 transparent transparent transparent;
+        }
+
+        /* Show the tooltip text when you mouse over the tooltip container */
+        .tooltip:hover .tooltiptext {
+        visibility: visible;
+        opacity: 1;
+        }
+
+        tr.results {
+            outline: thin dotted;
+        }
+    </style>
     </head>
     
     <body>
@@ -27,7 +77,7 @@
                             <option value="Geriatric" id='Geriatric'>Geriatric (&gt; 65)</option>
                         </select>
                         <br>
-                        <textarea name="question" rows=4 cols=50 form="qform">
+                        <textarea name="question" rows=8 cols=50 form="qform">
                             {%- if request.method=='POST' -%}
                                 {{ request.form.get('question') }}
                             {%- else -%}
@@ -36,28 +86,55 @@
                         </textarea>
                         <br>
                         <input type="hidden" id="qcui" name="qcui">
+                        <input type="hidden" id="qcontent" name="qcontent">
                         <input type="submit">
                     </form>
                 </div>
-                </td></tr>
-            {% if request.method=='POST' %}
-            <tr><td>
+                </td>
+    {% if request.method=='POST' %}
+        <td>
                 <div id="response">
                     All CUIs from the question:
                     <ul>
-                        {% for cui in question_cuis.keys() %}
-                        <li><a href="#" id="{{cui}}" onclick="document.getElementById('qcui').value = this.id; document.getElementById('qform').submit(); return false;">{{ cui }}</a> : {{ question_cuis[cui] }}</li>
+                        {% for cui,weight in cui_weights.items()|sort(reverse=True, attribute='1') %}
+                        <li><a href="#" id="{{cui}}" onclick="document.getElementById('qcui').value = this.id; document.getElementById('qform').submit(); return false;">{{ cui }}</a> : {{ question_cuis[cui] }} (Weight: {{ cui_weights[cui] }})</li>
                         {% endfor %}
                     </ul>
-                    <table>
-                        <tr><th>Text</th><th>Specialty</th><th>Content classifications</th></t><th>Matching CUIs</th><th>Similarity</th></tr>
-                    {% for response in responses %}
-                        {% if response.sim < 1.0 %}
-                    <tr><td>
-                        {{response.text}}
-                        </td>
+                    </div>
+                    </td>
+        </tr> <!-- end of top row with question and CUIS -->
+
+        <tr>
+        <table>
+            <tr>
+                <th>Specialty</th>
+                <th>Content classifications</th>
+                <th>Disposition</th>
+                <th>Text</th>
+                <th>Matching CUIs</th>
+                <th>Similarity</th>
+            </tr>
+            {% for response in responses %}
+                {% if response.sim < 1.0 %}
+                    <tr class="results">
                         <td>{{response.specialty}}</td>
-                        <td>{{response.contents}}</td>
+                        <td>
+                        <ul>
+                            {% for content in response.contents %}
+                            <li>
+                                <a href="#" id="{{content}}" onclick="document.getElementById('qcontent').value = this.id; document.getElementById('qform').submit(); return false;">{{ content }}</a>
+                            </li>
+                            {% endfor %}
+                            </ul>
+                        </td>
+                        <td>
+                            {{response.disposition}}
+                        </td>
+                        <td>
+                            <div class="tooltip"> {{response.text}} <span class="tooltiptext">{{response.note_id}}</span> </div> 
+                                <a href="#" onclick="toggleReplyDisplay({{loop.index0}})" id='text-{{loop.index0}}'>[Show reply]</a>
+                            <div id='reply-{{loop.index0}}' style="display:none; background-color: lightblue;"> <ul><li><b>Response:</b> {{response.reply|safe}}</li> </div>
+                        </td>
                         <td>
                             {{response.cuis}}
                         </td>
@@ -65,13 +142,31 @@
                         {{response.sim}}
                         </td>
                         </tr>
-                    {% endif %}
-                    {% endfor %}
-                    </table>
-                </div>
-            </td>
-            </tr>
-            {% endif %}
+                {% endif %}
+            {% endfor %}
         </table>
+    </div>
+    </td></tr>
+    {% endif %}
+</table>
+
+<script>
+function toggleReplyDisplay(q_ind) {
+  var text_element = document.getElementById('text-'+q_ind);
+  var reply_element = document.getElementById('reply-'+q_ind);
+
+  if (reply_element.style.display === "none") {
+    reply_element.style.display = "block";
+    text_element.text = "[Hide reply]";
+  } else {
+    reply_element.style.display = "none";
+    text_element.text = "[Show reply]";
+  }
+}
+
+document.getElementById('specialty').value="{{ specialty_filter | safe}}";
+
+</script>
+
     </body>
 </html>

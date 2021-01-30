@@ -4,8 +4,9 @@ import logging
 import datetime
 from dateutil import parser
 import time
+import re
 
-from flask import Flask, render_template, current_app, g, request, jsonify
+from flask import Flask, render_template, current_app, g, request, jsonify, escape
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as cos
 import numpy as np
@@ -17,6 +18,8 @@ import ctakes_rest
 app = Flask(__name__)
 conn = None
 cur = None
+# split_regex = re.compile(r'(\d{1,2}\/\d{1,2}\/\d{4}(?: \d{1,2}:\d{2}:\d{2} [AP]M)) entered by .*?Newline\s*')
+split_regex = re.compile(r' Newline ')
 
 with open('2008-vectors.pkl', 'rb') as vf:
     (vectors, vectorizer, vector_files) = pickle.load(vf)
@@ -117,8 +120,10 @@ def similarity():
 def cui_similarity():
     responses = []
     question_cuis = {}
-    
+    cui_weights = {}
+
     ohdsi = get_ohdsi_db().cursor()
+    specialty_filter = 'All'
     
     if request.method == 'POST':
         logging.info(request.form)
@@ -129,8 +134,11 @@ def cui_similarity():
         specialty_filter = request.form.get('specialty')
         age_filter = request.form.get('age')
         cui_filter = request.form.get('qcui')
+        content_filter = request.form.get('qcontent')
+
         logging.debug("Saw request with cui value %s" % (cui_filter,))
-        
+        logging.debug("Saw request with content value %s" % (content_filter,))
+
         processed_query = ctakes_rest.process_sentence(question)
         
         for cui, start, end in processed_query:
@@ -143,13 +151,23 @@ def cui_similarity():
 
         cui_text = ' '.join([x[0] for x in processed_query])
         cui_vector = cui_vectorizer.transform([cui_text])
+        cui_weights = {}
+        for cui in question_cuis.keys():
+            cui_ind = cui_vectorizer.vocabulary_.get(cui.lower(), -1)
+            if cui_ind >= 0:
+                cui_weights[cui] = '%0.3f' % (cui_vector[0,cui_ind])
+            else:
+                cui_weights[cui] = 0
+
+        # cui_weights = { cui:'%0.3f' % (cui_vector[0,cui_vectorizer.vocabulary_[cui.lower()]]) for cui in question_cuis.keys()}
+        
         similarities = cos(cui_vector, cui_vecs)[0]
         ranks = np.argsort(similarities).tolist()
         ranks.reverse()
         end_time = time.time()
         logging.info("Vectorizing and computing cos similarity took %f s" % (end_time-begin_time))
         
-        for ind in range(100):
+        for ind in range(1000):
             doc_ind = ranks[ind]
             note_id = note_ids[doc_ind]
 
@@ -157,18 +175,18 @@ def cui_similarity():
             ## This is what's slow:
             #ohdsi.execute('select note_text, note_type, note_date, person.year_of_birth from NOTE INNER JOIN PERSON on note.person_id=person.person_id where note_id=?', (note_id,))
             ## This is quite a bit faster but still the bottleneck since it's in the loop. Maybe can fix with some kind of better index?
-            ohdsi.execute('select note_text, note_type, note_date, person_id from NOTE where note_id=?', (note_id,))
-                
-            note_text, specialty, note_date, person_id = ohdsi.fetchone()
+            ohdsi.execute('select note_id, note_text, reply_text, note_type, note_date, person_id, disposition from NOTE where note_id=?', (note_id,))
+            
+            note_id, note_text, reply_text, specialty, note_date, person_id, disposition = ohdsi.fetchone()
+            
+            # specialty filter first because it doesn't require any additional queries:
+            if specialty != specialty_filter and specialty_filter != 'All':
+                continue
 
-            end_time = time.time()
-            logging.debug("Finding note from note_id took %f s" % (end_time-begin_time))
-            begin_time = end_time
-
+            # pt age filter:
+            # note_year = datetime.datetime.strptime(note_date, '%d/%m/%Y %H:%M').year
             ohdsi.execute('select year_of_birth from PERSON where person_id=?', (person_id,))
             yob = ohdsi.fetchone()[0]
-
-            # note_year = datetime.datetime.strptime(note_date, '%d/%m/%Y %H:%M').year
             note_year = parser.parse(note_date).year
             note_age = note_year - yob
             age_range = age_to_range(note_age)
@@ -176,34 +194,50 @@ def cui_similarity():
             logging.debug("Finding yob from person table took %f s" % (end_time-begin_time))
             begin_time = end_time
 
-            if specialty != specialty_filter and specialty_filter != 'All':
-                continue
-
             if age_range != age_filter and age_filter != 'All':
                 continue
-            
+
+            # content type filter:
             ohdsi.execute('select content_type from question_content where note_id=?', (note_id,))
             contents = [x[0] for x in ohdsi]
-            end_time = time.time()
-            logging.debug("Selecting content type took %f s" % (end_time-begin_time))
-            begin_time = end_time
+            if not content_filter is None and content_filter != '' and not content_filter in contents:
+                continue
 
+            # cui filter:
             ohdsi.execute('select note_nlp_concept from note_nlp where note_id=?', (note_id,))
             cuis = set([x[0] for x in ohdsi])
             if not cui_filter is None and cui_filter != '' and not cui_filter in cuis:
                 continue
 
+            # For reply_text, we want to escape any html put in there from the database:
+            reply_text = str(escape(reply_text))
+
+            # then reverse the order while using the time stamps to find message breaks
+            messages = split_regex.split(reply_text)
+            formatted_reply = '%s<br>' % (messages.pop())
+            messages = list(reversed(messages))
+
+            for message in messages:
+                formatted_reply += '%s<br>'  % (message,)
+            
+            # for message_ind in range(0, len(messages), 2):
+            #     formatted_reply += '<b>%s</b>: %s<br>' % (messages[message_ind], messages[message_ind+1])
+
+            # but then add in some html to format newlines correctly
+            # reply_text = reply_text.replace(' Newline ', '<br>')
+            # formatted_reply = formatted_reply.replace(' Newline ', '<br>')
+
             cuis = cuis.intersection(set(question_cuis.keys()))
-            responses.append({'text': note_text, 'cuis':' '.join(cuis), 'sim':similarities[doc_ind], 'specialty':specialty, 'contents':', '.join(contents)})
+            responses.append({'text': note_text, 'reply': formatted_reply, 'cuis':' '.join(cuis), 'sim':similarities[doc_ind], 'specialty':specialty, 'contents':contents, 'disposition':disposition, 'note_id':note_id})
 
             end_time = time.time()
             logging.debug("Finding concepts in note took %f s" % (end_time - begin_time))
 
-            if len(responses) > 10:
+            if len(responses) > 20:
                 break
 
     
-    return render_template('cui_sim.html', question_cuis=question_cuis, specialties=specialties, responses=responses)
+    return render_template('cui_sim.html', question_cuis=question_cuis, cui_weights=cui_weights, specialties=specialties, specialty_filter=specialty_filter, responses=responses)
 
 @app.route('/', methods=['POST', 'GET'])
 @app.route('/index', methods=['POST', 'GET'])

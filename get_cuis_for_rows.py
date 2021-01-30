@@ -18,7 +18,7 @@ def main(args):
                 # first row is the headers
                 continue
                 
-            _, row_id, _, _ = row
+            _, row_id, _ = row
             row_id = int(row_id)
             
             # get all the cuis for this text
